@@ -10,4 +10,4 @@ jobs:
           LITERAL_BOOLEAN: ${{ true }}
           LITERAL_NUMBER: ${{ 1234 }}
           LITERAL_STRING: ${{ 'Hello, world!' }}
-          LITERAL_OMIT_STRING: World
+          LITERAL1_OMIT_STRING: World
