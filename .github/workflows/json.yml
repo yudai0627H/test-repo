@@ -10,4 +10,4 @@ jobs:
           CONTEXT: ${{ toJson(github)}}
       - run: echo "${GITHUB}"
         env:
-          GITHUB: ${{ github.event }}
+          GITHUB: ${{ github }}
