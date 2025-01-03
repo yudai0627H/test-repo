@@ -8,6 +8,5 @@ jobs:
         env:
 
           CONTEXT: ${{ toJson(github)}}
-      - run: echo "${GITHUB}"
-        env:
-          GITHUB: ${{ github }}
+      - run: echo "${github}"
+        
