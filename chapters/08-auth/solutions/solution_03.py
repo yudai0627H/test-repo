@@ -1,10 +1,15 @@
 """
 問題3の模範解答: ログインエンドポイント
 JWTトークンを使った完全な認証システム
+
+【重要な修正ポイント】
+1. datetime.utcnow() → datetime.now(timezone.utc) に変更（Python 3.12で非推奨）
+2. SECRET_KEY は環境変数から読み込むべき（本番環境）
+3. Optional[str] → str | None に変更（Python 3.10+）
 """
 
-from datetime import datetime, timedelta
-from typing import Optional
+import os
+from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
@@ -12,9 +17,15 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 
 # 設定
-SECRET_KEY = "your-secret-key-keep-it-secret-in-production"
+# 本番環境では必ず環境変数から読み込む
+# 学習用のため、デフォルト値を設定しているが、本番ではエラーにすべき
+SECRET_KEY = os.getenv("SECRET_KEY", "development-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+# 本番環境では環境変数が必須
+if SECRET_KEY == "development-secret-key-change-in-production":
+    print("⚠️ 警告: 本番環境ではSECRET_KEY環境変数を設定してください")
 
 # パスワードハッシュ化の設定
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -22,21 +33,28 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # OAuth2設定
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-app = FastAPI()
+app = FastAPI(
+    title="認証システムデモ",
+    description="JWT認証の学習用アプリケーション"
+)
 
-# データモデル
+
+# データモデル（Python 3.10+ の型ヒント）
 class Token(BaseModel):
     access_token: str
     token_type: str
 
+
 class TokenData(BaseModel):
-    username: Optional[str] = None
+    username: str | None = None
+
 
 class User(BaseModel):
     username: str
-    email: Optional[str] = None
-    full_name: Optional[str] = None
-    disabled: Optional[bool] = None
+    email: str | None = None
+    full_name: str | None = None
+    disabled: bool | None = None
+
 
 class UserInDB(User):
     hashed_password: str
@@ -61,7 +79,7 @@ fake_users_db = {
 }
 
 
-# パスワード検証関数
+# パスワード関連関数
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """プレーンテキストのパスワードとハッシュを比較"""
     return pwd_context.verify(plain_password, hashed_password)
@@ -72,14 +90,15 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def get_user(db, username: str):
+def get_user(db: dict, username: str) -> UserInDB | None:
     """データベースからユーザーを取得"""
     if username in db:
         user_dict = db[username]
         return UserInDB(**user_dict)
+    return None
 
 
-def authenticate_user(fake_db, username: str, password: str):
+def authenticate_user(fake_db: dict, username: str, password: str) -> UserInDB | bool:
     """ユーザーを認証"""
     user = get_user(fake_db, username)
     if not user:
@@ -89,19 +108,27 @@ def authenticate_user(fake_db, username: str, password: str):
     return user
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    """JWTアクセストークンを生成"""
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+    """
+    JWTアクセストークンを生成
+
+    【重要】datetime.utcnow() は Python 3.12 で非推奨
+    代わりに datetime.now(timezone.utc) を使用
+    """
     to_encode = data.copy()
+
+    # ✅ 正しい書き方
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
     """トークンから現在のユーザーを取得"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -110,19 +137,20 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
+        username: str | None = payload.get("sub")
         if username is None:
             raise credentials_exception
         token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
+
     user = get_user(fake_users_db, username=token_data.username)
     if user is None:
         raise credentials_exception
     return user
 
 
-async def get_current_active_user(current_user: User = Depends(get_current_user)):
+async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
     """アクティブなユーザーのみを許可"""
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
@@ -181,6 +209,9 @@ if __name__ == "__main__":
     import uvicorn
 
     print("\n=== FastAPI 認証システムのデモ ===")
+    print("\n【セキュリティ注意事項】")
+    print("- SECRET_KEY は環境変数から設定してください")
+    print("- 本番環境では必ずHTTPSを使用してください")
     print("\n使用方法:")
     print("1. ユーザー登録（オプション）:")
     print("   POST /register")

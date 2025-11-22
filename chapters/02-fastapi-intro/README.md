@@ -133,16 +133,38 @@ app = FastAPI(
 )
 ```
 
-## 起動イベント
+## ライフサイクルイベント
+
+**注意: `@app.on_event()` は非推奨です。代わりに `lifespan` を使用してください。**
 
 ```python
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """アプリケーションのライフサイクル管理"""
+    # 起動時の処理
+    print("アプリケーションが起動しました")
+    # データベース接続の初期化など
+    yield
+    # 終了時の処理
+    print("アプリケーションが終了します")
+    # リソースのクリーンアップなど
+
+app = FastAPI(lifespan=lifespan)
+```
+
+### 非推奨の書き方（参考）
+```python
+# ❌ 非推奨: on_event デコレータ
 @app.on_event("startup")
 async def startup_event():
-    print("アプリケーションが起動しました")
+    print("起動")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    print("アプリケーションが終了します")
+    print("終了")
 ```
 
 ## 実践例
